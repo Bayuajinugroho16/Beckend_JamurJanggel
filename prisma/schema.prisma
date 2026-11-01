@@ -1,0 +1,109 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            Int            @id @default(autoincrement())
+  email         String         @unique
+  password      String
+  name          String
+  phone         String?
+  address       String?
+  avatar        String?
+  role          String         @default("user")
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  nodes         Node[]
+  schedules     Schedule[]
+  notifications Notification[]
+  settings      Setting?
+  resetTokens   PasswordResetToken[]
+}
+
+model Node {
+  id          Int        @id @default(autoincrement())
+  userId      Int
+  nodeId      Int        @unique
+  name        String
+  location    String?
+  isActive    Boolean    @default(true)
+  mode        String     @default("auto")
+  targetTemp  Float      @default(25.0)
+  targetRh    Float      @default(85.0)
+  targetSoil  Float      @default(65.0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schedules   Schedule[]
+  logs        Log[]
+
+  @@unique([userId, nodeId])
+}
+
+model Schedule {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  nodeId    Int
+  name      String
+  time      String
+  duration  Int
+  days      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  node      Node     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+}
+
+model Log {
+  id        Int      @id @default(autoincrement())
+  nodeId    Int
+  action    String
+  duration  Int?
+  source    String
+  createdAt DateTime @default(now())
+  node      Node     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@index([nodeId, createdAt])
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  title     String
+  message   String
+  type      String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+}
+
+model Setting {
+  id               Int      @id @default(autoincrement())
+  userId           Int      @unique
+  language         String   @default("id")
+  darkMode         Boolean  @default(false)
+  refreshInterval  Int      @default(5000)
+  dataRetention    Int      @default(30)
+  notifications    Boolean  @default(true)
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PasswordResetToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+}
