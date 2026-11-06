@@ -28,6 +28,27 @@ describe('MQTT subscriptions', () => {
     );
   });
 
+  test('logs topics rejected by the broker', () => {
+    const client = new EventEmitter();
+    const logger = require('../src/utils/logger');
+    const errorSpy = jest.spyOn(logger, 'error').mockImplementation(() => {});
+    client.subscribe = jest.fn((topics, options, callback) => callback(
+      Object.assign(new Error('Subscribe error: Unspecified error'), {
+        packet: { granted: topics.map((_, index) => index === 2 ? 0x80 : 1) }
+      }),
+      topics.map((topic) => ({ topic }))
+    ));
+
+    mqttService.startMqtt(client, null);
+    client.emit('connect');
+
+    expect(errorSpy).toHaveBeenCalledWith('MQTT subscription failed', {
+      message: 'Subscribe error: Unspecified error',
+      rejectedTopics: [{ topic: 'jamur/node1/rh', reasonCode: 0x80 }]
+    });
+    errorSpy.mockRestore();
+  });
+
   test('updates latest battery telemetry from per-node MQTT topics', async () => {
     const { prisma } = require('../src/config/database');
     const nodeQuery = jest.spyOn(prisma.node, 'findMany').mockResolvedValue([]);

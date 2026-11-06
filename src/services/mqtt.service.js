@@ -127,8 +127,18 @@ function startMqtt(clientInstance, socketServer) {
   client.on('connect', () => {
     logger.info('MQTT connected to broker');
     client.subscribe(subscribedTopics, { qos: 1 }, (error, granted) => {
-      if (error) logger.error('MQTT subscription failed', { message: error.message });
-      else logger.info('Subscribed to MQTT topics', { granted });
+      if (error) {
+        const rejectedTopics = error.packet?.granted
+          ?.flatMap((reasonCode, index) => reasonCode >= 0x80
+            ? [{ topic: granted?.[index]?.topic, reasonCode }]
+            : []) || [];
+        logger.error('MQTT subscription failed', {
+          message: error.message,
+          ...(rejectedTopics.length > 0 ? { rejectedTopics } : {})
+        });
+      } else {
+        logger.info('Subscribed to MQTT topics', { granted });
+      }
     });
   });
 
