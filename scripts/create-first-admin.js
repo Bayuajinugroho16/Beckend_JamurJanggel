@@ -62,7 +62,7 @@ function describeDatabase(connectionString) {
 async function main() {
   const [email, name, ...extra] = process.argv.slice(2);
   if (!email || !name || extra.length || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new Error('Usage: npm run db:create-first-admin -- <admin-email> <admin-name>');
+    throw new Error('Usage: node scripts/create-first-admin.js <admin-email> <admin-name>');
   }
 
   const normalizedEmail = email.toLowerCase();
