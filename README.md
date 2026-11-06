@@ -99,12 +99,18 @@ Schedule `days` is a seven-character string ordered Sunday through Saturday (`1`
 
 Forgot-password email requires SMTP settings and `FRONTEND_RESET_URL`. Avatar uploads accept JPEG, PNG, WEBP, or GIF up to `MAX_AVATAR_SIZE_MB`; local uploads are served from `/uploads`.
 
-## 6. Production deployment
+## 6. Deploy on Render (free/testing)
 
-1. Provision PostgreSQL, InfluxDB, and EMQX with TLS and restricted network access.
-2. Set production environment variables through your deployment platform's secret manager. Use a unique high-entropy JWT secret, SMTP credentials if needed, and a specific `CORS_ORIGIN` (comma-separated origins; avoid `*` in production).
-3. Run `npm ci`, `npm run db:generate`, and `npm run db:deploy`; then start with `npm start` under a process manager or container orchestrator.
-4. Use HTTPS/WSS at a reverse proxy, persistent or object-backed avatar storage, monitored backups, and log/health-check collection. Do not expose database or MQTT credentials to Flutter.
-5. Run only one scheduler worker. If scaling HTTP/WebSocket instances, move scheduling to a single dedicated worker or add distributed schedule locking before enabling multiple workers.
+The repository includes a `render.yaml` Blueprint for a free Node.js web service. To deploy:
+
+1. Create a PostgreSQL database on Render (or use a reachable managed PostgreSQL database). Keep it in the Singapore region when possible. Copy its **internal** connection string into the web service's `DATABASE_URL` setting; do not use a local `localhost` URL.
+2. Push this repository to GitHub. In Render, choose **New > Blueprint**, connect the repository, and apply `render.yaml`. During setup, provide `DATABASE_URL` and `CORS_ORIGIN` (the exact frontend origin, such as `https://your-frontend.example.com`). Render generates `JWT_SECRET`.
+3. In the web service's Environment settings, add the integration variables you use: `MQTT_HOST`, `MQTT_PORT`, `MQTT_USERNAME`, `MQTT_PASSWORD`; `INFLUX_URL`, `INFLUX_TOKEN`, `INFLUX_ORG`, `INFLUX_BUCKET`; and SMTP variables if password-reset email is enabled. Keep credentials in Render, never in the repository or frontend.
+4. The start command applies checked-in Prisma migrations with `npm run db:deploy` before starting the API. Check the first deploy's logs; `/health` is configured as the health check. Set `CORS_ORIGIN` to the frontend's actual origin before production use.
+5. After deploying to a new, empty database, provision the first administrator using the account-provisioning process. The registration API is administrator-only. Do not run the account-reset utility on a database with data unless you intend to delete its accounts and related records.
+
+**Free-tier limitations:** Render may spin down an idle free web service. While it sleeps, MQTT is disconnected and the in-process schedule worker does not run; cold starts can also delay API requests. Use an always-on service for reliable MQTT control and scheduled actions. The free service's local filesystem is ephemeral, so uploaded avatars can disappear after a restart or deploy; use persistent/object storage or disable avatar uploads for durable use.
+
+For production, also configure database backups, a durable avatar store, and monitoring. Keep a single scheduler worker; multiple replicas can trigger schedules more than once unless scheduling is moved to a dedicated worker or protected by distributed locking.
 
 Sensor writes use the InfluxDB bucket `INFLUX_BUCKET`, measurement `sensor_data`, tags `node_id` and `user_id`, and fields `temperature`, `humidity`, `soil_moisture`, `battery_voltage`, and `battery_percent`.

@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: jamur-janggel-backend
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci && npm run db:generate
+    startCommand: npm run db:deploy && npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TZ
+        value: Asia/Jakarta
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        sync: false
