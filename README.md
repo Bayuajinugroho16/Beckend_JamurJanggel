@@ -107,7 +107,13 @@ The repository includes a `render.yaml` Blueprint for a free Node.js web service
 2. Push this repository to GitHub. In Render, choose **New > Blueprint**, connect the repository, and apply `render.yaml`. During setup, provide `DATABASE_URL` and `CORS_ORIGIN` (the exact frontend origin, such as `https://your-frontend.example.com`). Render generates `JWT_SECRET`.
 3. In the web service's Environment settings, add the integration variables you use: `MQTT_HOST`, `MQTT_PORT`, `MQTT_USERNAME`, `MQTT_PASSWORD`; `INFLUX_URL`, `INFLUX_TOKEN`, `INFLUX_ORG`, `INFLUX_BUCKET`; and SMTP variables if password-reset email is enabled. Keep credentials in Render, never in the repository or frontend.
 4. The start command applies checked-in Prisma migrations with `npm run db:deploy` before starting the API. Check the first deploy's logs; `/health` is configured as the health check. Set `CORS_ORIGIN` to the frontend's actual origin before production use.
-5. After deploying to a new, empty database, provision the first administrator using the account-provisioning process. The registration API is administrator-only. Do not run the account-reset utility on a database with data unless you intend to delete its accounts and related records.
+5. If the database has no administrator, create the first one non-destructively from an interactive terminal:
+
+   ```powershell
+   node scripts/create-first-admin.js admin@example.com "Jamur Admin"
+   ```
+
+   The command securely prompts for the production PostgreSQL URL and admin password, confirms the database target, and refuses to proceed if an admin already exists. It does not delete existing data. Sign in with this admin, then use the administrator-only registration endpoint to create regular accounts. Never put production credentials in chat, command-line arguments, or source control. Do not run the account-reset utility unless you intend to delete all accounts and related records.
 
 **Free-tier limitations:** Render may spin down an idle free web service. While it sleeps, MQTT is disconnected and the in-process schedule worker does not run; cold starts can also delay API requests. Use an always-on service for reliable MQTT control and scheduled actions. The free service's local filesystem is ephemeral, so uploaded avatars can disappear after a restart or deploy; use persistent/object storage or disable avatar uploads for durable use.
 
