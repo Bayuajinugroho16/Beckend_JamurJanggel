@@ -10,14 +10,12 @@ const autoWaterCooldown = new Map();
 const AUTO_WATER_COOLDOWN_MS = 5 * 60 * 1000;
 const DEBUG_MESSAGE_LIMIT = 50;
 const subscribedTopics = [
-  ...Array.from({ length: MAX_NODE_ID }, (_, index) => index + 1).flatMap((nodeId) => [
-    `jamur/node${nodeId}/soil`,
-    `jamur/node${nodeId}/suhu`,
-    `jamur/node${nodeId}/rh`,
-    `jamur/node${nodeId}/battery`,
-    `jamur/node${nodeId}/battery_percent`,
-    `jamur/node${nodeId}/status`
-  ]),
+  'jamur/+/soil',
+  'jamur/+/suhu',
+  'jamur/+/rh',
+  'jamur/+/battery',
+  'jamur/+/battery_percent',
+  'jamur/+/status',
   'jamur/notifikasi',
   'jamur/debug/test'
 ];

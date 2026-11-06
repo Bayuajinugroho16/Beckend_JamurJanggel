@@ -6,7 +6,7 @@ const { EventEmitter } = require('events');
 const mqttService = require('../src/services/mqtt.service');
 
 describe('MQTT subscriptions', () => {
-  test('subscribes only to the first two nodes after connect', () => {
+  test('uses compact topic filters to subscribe to node telemetry after connect', () => {
     const client = new EventEmitter();
     client.subscribe = jest.fn((topics, options, callback) => callback(null));
 
@@ -17,10 +17,8 @@ describe('MQTT subscriptions', () => {
 
     expect(client.subscribe).toHaveBeenCalledWith(
       [
-        'jamur/node1/soil', 'jamur/node1/suhu', 'jamur/node1/rh',
-        'jamur/node1/battery', 'jamur/node1/battery_percent', 'jamur/node1/status',
-        'jamur/node2/soil', 'jamur/node2/suhu', 'jamur/node2/rh',
-        'jamur/node2/battery', 'jamur/node2/battery_percent', 'jamur/node2/status',
+        'jamur/+/soil', 'jamur/+/suhu', 'jamur/+/rh',
+        'jamur/+/battery', 'jamur/+/battery_percent', 'jamur/+/status',
         'jamur/notifikasi', 'jamur/debug/test'
       ],
       { qos: 1 },
@@ -44,7 +42,7 @@ describe('MQTT subscriptions', () => {
 
     expect(errorSpy).toHaveBeenCalledWith('MQTT subscription failed', {
       message: 'Subscribe error: Unspecified error',
-      rejectedTopics: [{ topic: 'jamur/node1/rh', reasonCode: 0x80 }]
+      rejectedTopics: [{ topic: 'jamur/+/rh', reasonCode: 0x80 }]
     });
     errorSpy.mockRestore();
   });
