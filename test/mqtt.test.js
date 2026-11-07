@@ -65,6 +65,50 @@ describe('MQTT subscriptions', () => {
     nodeQuery.mockRestore();
   });
 
+  test('persists each individual sensor topic as the latest known PostgreSQL snapshot', async () => {
+    const { prisma } = require('../src/config/database');
+    const nodeQuery = jest.spyOn(prisma.node, 'findMany').mockResolvedValue([{
+      id: 1,
+      nodeId: 1,
+      userId: 2,
+      mode: 'manual',
+      isActive: true,
+      targetTemp: 25,
+      targetRh: 0,
+      targetSoil: 0
+    }]);
+    const sensorCreate = jest.spyOn(prisma.sensorData, 'create').mockResolvedValue({});
+    const client = new EventEmitter();
+    client.subscribe = jest.fn();
+    mqttService.startMqtt(client, null);
+
+    for (const [field, value] of [
+      ['soil', '9'],
+      ['suhu', '25.5'],
+      ['rh', '80'],
+      ['battery', '3.87'],
+      ['battery_percent', '72']
+    ]) {
+      client.emit(`message`, `jamur/node1/${field}`, Buffer.from(value));
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+
+    expect(sensorCreate).toHaveBeenCalledTimes(5);
+    expect(sensorCreate).toHaveBeenLastCalledWith({
+      data: expect.objectContaining({
+        nodeId: 1,
+        soil_moisture: 9,
+        temperature: 25.5,
+        humidity: 80,
+        battery_voltage: 3.87,
+        battery_percent: 72,
+        createdAt: expect.any(Date)
+      })
+    });
+    sensorCreate.mockRestore();
+    nodeQuery.mockRestore();
+  });
+
   test('records and logs received MQTT messages for the debug endpoints', () => {
     const client = new EventEmitter();
     client.subscribe = jest.fn();

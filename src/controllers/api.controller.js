@@ -5,7 +5,6 @@ const nodemailer = require('nodemailer');
 const env = require('../config/env');
 const { prisma } = require('../config/database');
 const mqttService = require('../services/mqtt.service');
-const { getLatest } = mqttService;
 const { queryHistory } = require('../services/influx.service');
 const { apiResponse } = require('../utils/helpers');
 const { MAX_NODE_ID } = require('../config/nodes');
@@ -198,8 +197,20 @@ const controller = {
   },
 
   async currentSensor(req, res) {
-    await sharedNode(req.params.nodeId);
-    const data = getLatest([Number(req.params.nodeId)])[0];
+    const node = await sharedNode(req.params.nodeId);
+    const latest = await prisma.sensorData.findFirst({
+      where: { nodeId: node.nodeId },
+      orderBy: { createdAt: 'desc' }
+    });
+    const data = {
+      nodeId: node.nodeId,
+      soilMoisture: latest?.soil_moisture ?? null,
+      temperature: latest?.temperature ?? null,
+      humidity: latest?.humidity ?? null,
+      batteryVoltage: latest?.battery_voltage ?? null,
+      batteryPercent: latest?.battery_percent ?? null,
+      timestamp: latest?.createdAt ?? null
+    };
     return apiResponse(res, data);
   },
 
@@ -208,7 +219,22 @@ const controller = {
       where: { nodeId: { lte: MAX_NODE_ID }, isActive: true },
       select: { nodeId: true }
     });
-    return apiResponse(res, getLatest(nodes.map((node) => node.nodeId)));
+    const readings = await Promise.all(nodes.map(async ({ nodeId }) => {
+      const latest = await prisma.sensorData.findFirst({
+        where: { nodeId },
+        orderBy: { createdAt: 'desc' }
+      });
+      return {
+        nodeId,
+        soilMoisture: latest?.soil_moisture ?? null,
+        temperature: latest?.temperature ?? null,
+        humidity: latest?.humidity ?? null,
+        batteryVoltage: latest?.battery_voltage ?? null,
+        batteryPercent: latest?.battery_percent ?? null,
+        timestamp: latest?.createdAt ?? null
+      };
+    }));
+    return apiResponse(res, readings);
   },
 
   async sensorHistory(req, res) {

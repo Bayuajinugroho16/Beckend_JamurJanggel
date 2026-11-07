@@ -3,6 +3,7 @@ process.env.JWT_SECRET = 'unit-test-secret-value-at-least-32-characters';
 process.env.NODE_ENV = 'test';
 
 let mockNodes = [];
+let mockLatestSensor = null;
 const mockPublish = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('../src/config/database', () => ({
@@ -28,6 +29,9 @@ jest.mock('../src/config/database', () => ({
         Object.assign(node, data);
         return { ...node };
       })
+    },
+    sensorData: {
+      findFirst: jest.fn(async () => mockLatestSensor)
     },
     log: { create: jest.fn(async ({ data }) => data) },
     $transaction: jest.fn(async (operations) => operations)
@@ -71,6 +75,7 @@ function tokenFor(userId) {
 describe('shared node access and supported IDs', () => {
   beforeEach(() => {
     mockNodes = createNodes();
+    mockLatestSensor = null;
     mockPublish.mockClear();
   });
 
@@ -108,6 +113,31 @@ describe('shared node access and supported IDs', () => {
     expect(detail.body.data.nodeId).toBe(1);
     expect(sensor.status).toBe(200);
     expect(sensor.body.data.nodeId).toBe(1);
+  });
+
+  test('returns the latest persisted sensor values instead of node targets', async () => {
+    mockLatestSensor = {
+      soil_moisture: 9,
+      temperature: 24.5,
+      humidity: 81,
+      battery_voltage: 3.87,
+      battery_percent: 72,
+      createdAt: new Date('2026-11-07T06:00:00.000Z')
+    };
+    const response = await request(app)
+      .get('/api/sensor/1/current')
+      .set('Authorization', `Bearer ${tokenFor(9)}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toEqual({
+      nodeId: 1,
+      soilMoisture: 9,
+      temperature: 24.5,
+      humidity: 81,
+      batteryVoltage: 3.87,
+      batteryPercent: 72,
+      timestamp: '2026-11-07T06:00:00.000Z'
+    });
   });
 
   test('allows any authenticated account to control the shared master pump', async () => {

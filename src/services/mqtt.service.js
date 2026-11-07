@@ -91,6 +91,23 @@ async function processSensor(nodeId, field, value) {
   for (const node of nodes) {
     if (io) io.to(`node:${node.nodeId}`).emit('sensor:update', reading);
     try {
+      await prisma.sensorData.create({
+        data: {
+          nodeId: node.nodeId,
+          soil_moisture: reading.soilMoisture,
+          temperature: reading.temperature,
+          humidity: reading.humidity,
+          battery_voltage: reading.batteryVoltage,
+          battery_percent: reading.batteryPercent,
+          createdAt: new Date(reading.timestamp)
+        }
+      });
+    } catch (error) {
+      logger.error('Could not persist sensor reading to PostgreSQL', {
+        nodeId: node.nodeId, message: error.message
+      });
+    }
+    try {
       await writeSensor({ ...reading, userId: node.userId });
     } catch (error) {
       logger.error('Could not persist sensor reading to InfluxDB', {

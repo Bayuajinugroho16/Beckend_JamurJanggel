@@ -1,7 +1,7 @@
 const { InfluxDB } = require('@influxdata/influxdb-client');
 const env = require('./env');
 
-const configured = Boolean(env.INFLUX_URL && env.INFLUX_TOKEN && env.INFLUX_ORG);
+const configured = Boolean(env.INFLUX_URL && env.INFLUX_TOKEN && env.INFLUX_ORG && env.INFLUX_BUCKET);
 const client = configured ? new InfluxDB({ url: env.INFLUX_URL, token: env.INFLUX_TOKEN }) : null;
 
 module.exports = {

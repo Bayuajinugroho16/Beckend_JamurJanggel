@@ -1,6 +1,8 @@
 const { Point } = require('@influxdata/influxdb-client');
 const influx = require('../config/influxdb');
 const env = require('../config/env');
+const logger = require('../utils/logger');
+let missingConfigurationWarningLogged = false;
 
 function ensureConfigured() {
   if (!influx.configured) {
@@ -18,7 +20,13 @@ async function writeSensor({
   batteryPercent,
   timestamp
 }) {
-  ensureConfigured();
+  if (!influx.configured) {
+    if (!missingConfigurationWarningLogged) {
+      logger.warn('InfluxDB is not configured; sensor history writes are being skipped');
+      missingConfigurationWarningLogged = true;
+    }
+    return false;
+  }
   const pointTimestamp = timestamp == null
     ? new Date()
     : timestamp instanceof Date
@@ -40,6 +48,7 @@ async function writeSensor({
   if (Number.isFinite(batteryPercent)) point.floatField('battery_percent', batteryPercent);
   influx.writeApi.writePoint(point);
   await influx.writeApi.flush();
+  return true;
 }
 
 async function queryHistory({ nodeId, from, to, aggregate = 'mean', interval = '5m' }) {

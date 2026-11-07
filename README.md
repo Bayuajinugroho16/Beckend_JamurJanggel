@@ -27,7 +27,15 @@ npm run db:deploy
 npm run db:generate
 ```
 
-Create one `Node` row per physical device in Prisma Studio (`npm run db:studio`) or through your provisioning process. `Node.nodeId` is the globally unique hardware ID used in MQTT topics; the application currently shares active Node 1–2 with every authenticated account. Node configuration edits remain restricted to the database owner. New accounts receive default settings, but nodes are provisioned separately.
+Provision Node 1 and Node 2 for an existing account with the guarded Prisma utility:
+
+```powershell
+node scripts/provision-nodes.js
+```
+
+Run it in an interactive terminal. It prompts for the PostgreSQL URL without echoing it, the target account email, and an exact database-target confirmation. It refuses to modify either node if one is already registered, and creates both records in one serializable transaction. It uses Prisma rather than raw SQL and never changes or reassigns existing rows. New nodes are active in `manual` mode so sensor updates can flow without enabling automatic watering; no MQTT command is sent by provisioning. Verify the account's `GET /api/nodes` response and `GET /api/sensor/1/current` and `/api/sensor/2/current` afterward.
+
+`Node.nodeId` is the globally unique hardware ID used in MQTT topics `jamur/node1/...` and `jamur/node2/...`; the database `Node.id` is an unrelated generated record ID. The application currently shares active Node 1–2 with every authenticated account. Node configuration edits remain restricted to the database owner. New accounts receive default settings, but nodes are provisioned separately.
 
 For local schema changes, use `npm run db:migrate` to create and apply a migration. In production, use `npm run db:deploy`; do not run development migrations.
 
@@ -53,7 +61,9 @@ npm start
 
 The API listens on `PORT` (default `3000`). Health check: `GET /health`. Interactive API documentation: `/api-docs`.
 
-PostgreSQL and JWT configuration are required at startup. MQTT and InfluxDB are independently configured: the server logs when MQTT is disabled, sensor events can still be sent over Socket.IO without InfluxDB, and history requests return `503` until InfluxDB is configured. Schedule/manual pump control requires a connected MQTT broker.
+PostgreSQL and JWT configuration are required at startup. MQTT and InfluxDB are independently configured: the server logs when MQTT is disabled, sensor readings received over MQTT are persisted to PostgreSQL, and missing InfluxDB configuration only skips InfluxDB history writes (history requests return `503`). History uses InfluxDB 2.x; set `INFLUX_URL`, `INFLUX_TOKEN`, `INFLUX_ORG`, and `INFLUX_BUCKET` to enable it. In Render, add those four environment variables to the web service; `render.yaml` declares them as dashboard-managed secrets/settings (`sync: false`). Schedule/manual pump control requires a connected MQTT broker.
+
+The MQTT topics send individual numeric values. Each topic creates a `SensorData` row with the newest known values and null for values not received yet. `GET /api/sensor/:nodeId/current` reads the most recent row from PostgreSQL, while historical graph endpoints continue to query InfluxDB.
 
 ## 4. Test the API
 
