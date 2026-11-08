@@ -12,7 +12,6 @@ const DEBUG_MESSAGE_LIMIT = 50;
 const subscribedTopics = [
   'jamur/+/soil',
   'jamur/+/suhu',
-  'jamur/+/rh',
   'jamur/+/battery',
   'jamur/+/battery_percent',
   'jamur/+/status',
@@ -63,7 +62,6 @@ async function autoWater(node, reading) {
 async function processSensor(nodeId, field, value) {
   const fieldName = {
     suhu: 'temperature',
-    rh: 'humidity',
     soil: 'soilMoisture',
     battery: 'batteryVoltage',
     battery_percent: 'batteryPercent'
@@ -78,7 +76,6 @@ async function processSensor(nodeId, field, value) {
   const reading = latest.get(key) || {
     nodeId: Number(nodeId),
     temperature: null,
-    humidity: null,
     soilMoisture: null,
     batteryVoltage: null,
     batteryPercent: null
@@ -96,7 +93,6 @@ async function processSensor(nodeId, field, value) {
           nodeId: node.nodeId,
           soil_moisture: reading.soilMoisture,
           temperature: reading.temperature,
-          humidity: reading.humidity,
           battery_voltage: reading.batteryVoltage,
           battery_percent: reading.batteryPercent,
           createdAt: new Date(reading.timestamp)
@@ -167,7 +163,7 @@ function startMqtt(clientInstance, socketServer) {
     if (topic === 'jamur/debug/test') return;
 
     const statusMatch = topic.match(/^jamur\/node(\d+)\/status$/);
-    const sensorMatch = topic.match(/^jamur\/node(\d+)\/(soil|suhu|rh|battery|battery_percent)$/);
+    const sensorMatch = topic.match(/^jamur\/node(\d+)\/(soil|suhu|battery|battery_percent)$/);
     if (topic === 'jamur/notifikasi') {
       handleBroadcastNotification(message).catch((error) => logger.error('MQTT notification handling failed', { message: error.message }));
     } else if (statusMatch) {
@@ -215,7 +211,6 @@ function getLatest(nodeIds) {
   return nodeIds.map((nodeId) => latest.get(String(nodeId)) || {
     nodeId,
     temperature: null,
-    humidity: null,
     soilMoisture: null,
     batteryVoltage: null,
     batteryPercent: null,

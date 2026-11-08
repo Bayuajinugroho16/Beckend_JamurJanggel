@@ -14,7 +14,6 @@ async function writeSensor({
   nodeId,
   userId,
   temperature,
-  humidity,
   soilMoisture,
   batteryVoltage,
   batteryPercent,
@@ -40,9 +39,8 @@ async function writeSensor({
     .tag('node_id', String(nodeId))
     .tag('user_id', String(userId))
     .timestamp(pointTimestamp);
-
   if (Number.isFinite(temperature)) point.floatField('temperature', temperature);
-  if (Number.isFinite(humidity)) point.floatField('humidity', humidity);
+  if (Number.isFinite(temperature)) point.floatField('temperature', temperature);
   if (Number.isFinite(soilMoisture)) point.floatField('soil_moisture', soilMoisture);
   if (Number.isFinite(batteryVoltage)) point.floatField('battery_voltage', batteryVoltage);
   if (Number.isFinite(batteryPercent)) point.floatField('battery_percent', batteryPercent);
@@ -75,7 +73,6 @@ from(bucket: "${env.INFLUX_BUCKET}")
         result.push({
           timestamp: value._time,
           temperature: value.temperature ?? null,
-          humidity: value.humidity ?? null,
           soilMoisture: value.soil_moisture ?? null,
           batteryVoltage: value.battery_voltage ?? null,
           batteryPercent: value.battery_percent ?? null

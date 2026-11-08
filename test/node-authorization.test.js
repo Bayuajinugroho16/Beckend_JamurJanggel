@@ -42,7 +42,6 @@ jest.mock('../src/services/mqtt.service', () => ({
   getLatest: jest.fn((nodeIds) => nodeIds.map((nodeId) => ({
     nodeId,
     temperature: null,
-    humidity: null,
     soilMoisture: null,
     timestamp: null
   }))),
@@ -133,11 +132,39 @@ describe('shared node access and supported IDs', () => {
       nodeId: 1,
       soilMoisture: 9,
       temperature: 24.5,
-      humidity: 81,
       batteryVoltage: 3.87,
       batteryPercent: 72,
       timestamp: '2026-11-07T06:00:00.000Z'
     });
+  });
+
+  test('does not expose legacy humidity measurements in current sensor responses', async () => {
+    mockLatestSensor = {
+      soil_moisture: 9,
+      temperature: 24.5,
+      humidity: 81,
+      createdAt: new Date('2026-11-07T06:00:00.000Z')
+    };
+    const response = await request(app)
+      .get('/api/sensor/1/current')
+      .set('Authorization', `Bearer ${tokenFor(9)}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({
+      temperature: 24.5,
+      soilMoisture: 9
+    });
+    expect(response.body.data).not.toHaveProperty('humidity');
+  });
+
+  test('rejects obsolete air-humidity target configuration', async () => {
+    const response = await request(app)
+      .put('/api/nodes/1')
+      .set('Authorization', `Bearer ${tokenFor(9)}`)
+      .send({ targetRh: 85 });
+
+    expect(response.status).toBe(422);
+    expect(mockPublish).not.toHaveBeenCalled();
   });
 
   test('allows any authenticated account to control the shared master pump', async () => {

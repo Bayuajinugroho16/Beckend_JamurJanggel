@@ -177,7 +177,6 @@ const controller = {
       name: req.body.name ?? node.name,
       location: Object.hasOwn(req.body, 'location') ? req.body.location : node.location,
       targetTemp: req.body.targetTemp ?? node.targetTemp,
-      targetRh: req.body.targetRh ?? node.targetRh,
       targetSoil: req.body.targetSoil ?? node.targetSoil,
       isActive: req.body.isActive ?? node.isActive
     };
@@ -206,7 +205,6 @@ const controller = {
       nodeId: node.nodeId,
       soilMoisture: latest?.soil_moisture ?? null,
       temperature: latest?.temperature ?? null,
-      humidity: latest?.humidity ?? null,
       batteryVoltage: latest?.battery_voltage ?? null,
       batteryPercent: latest?.battery_percent ?? null,
       timestamp: latest?.createdAt ?? null
@@ -228,7 +226,6 @@ const controller = {
         nodeId,
         soilMoisture: latest?.soil_moisture ?? null,
         temperature: latest?.temperature ?? null,
-        humidity: latest?.humidity ?? null,
         batteryVoltage: latest?.battery_voltage ?? null,
         batteryPercent: latest?.battery_percent ?? null,
         timestamp: latest?.createdAt ?? null

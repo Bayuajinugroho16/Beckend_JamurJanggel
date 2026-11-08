@@ -1,0 +1,1 @@
+ALTER TABLE "Node" DROP COLUMN "targetRh";

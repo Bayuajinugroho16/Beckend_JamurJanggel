@@ -26,9 +26,6 @@ async function notifySensorThreshold(node, reading) {
   if (Number.isFinite(reading.temperature) && reading.temperature > node.targetTemp + 3) {
     violations.push(`Suhu ${reading.temperature}°C melebihi target ${node.targetTemp}°C`);
   }
-  if (Number.isFinite(reading.humidity) && reading.humidity < node.targetRh - 10) {
-    violations.push(`Kelembapan udara ${reading.humidity}% di bawah target ${node.targetRh}%`);
-  }
   if (Number.isFinite(reading.soilMoisture) && reading.soilMoisture < node.targetSoil - 10) {
     violations.push(`Kelembapan tanah ${reading.soilMoisture}% di bawah target ${node.targetSoil}%`);
   }

@@ -83,7 +83,7 @@ const swaggerDocument = {
         body: {
           name: { type: 'string' }, location: { type: 'string', nullable: true },
           isActive: { type: 'boolean' }, mode: { type: 'string', enum: ['auto', 'manual'] },
-          targetTemp: { type: 'number' }, targetRh: { type: 'number' }, targetSoil: { type: 'number' }
+          targetTemp: { type: 'number' }, targetSoil: { type: 'number' }
         }
       })
     },
@@ -162,7 +162,7 @@ const swaggerDocument = {
     },
     '/settings/calibrate': { post: endpoint('Calibrate a sensor', { body: {
       nodeId: { type: 'integer', minimum: 1, maximum: MAX_NODE_ID },
-      sensor: { type: 'string', enum: ['temperature', 'humidity', 'soilMoisture'] },
+      sensor: { type: 'string', enum: ['temperature', 'soilMoisture'] },
       offset: { type: 'number', minimum: -100, maximum: 100 }
     } }) }
   }

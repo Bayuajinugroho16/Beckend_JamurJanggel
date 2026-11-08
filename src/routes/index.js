@@ -30,7 +30,6 @@ const schemas = {
     isActive: Joi.boolean(),
     mode: Joi.string().valid('auto', 'manual'),
     targetTemp: Joi.number().min(-20).max(100),
-    targetRh: Joi.number().min(0).max(100),
     targetSoil: Joi.number().min(0).max(100)
   }).min(1),
   mode: Joi.object({ mode: Joi.string().valid('auto', 'manual').required() }),
@@ -69,7 +68,7 @@ const schemas = {
   }).min(1),
   calibrate: Joi.object({
     nodeId,
-    sensor: Joi.string().valid('temperature', 'humidity', 'soilMoisture').required(),
+    sensor: Joi.string().valid('temperature', 'soilMoisture').required(),
     offset: Joi.number().min(-100).max(100).required()
   }),
   history: Joi.object({

@@ -41,6 +41,7 @@ describe('InfluxDB sensor writes', () => {
     });
 
     expect(serialized).toContain('temperature=25.5');
+    expect(serialized).not.toContain('humidity');
     expect(serialized).toContain('battery_voltage=3.87');
     expect(serialized).toContain('battery_percent=72');
     expect(serialized).toMatch(/ \d+$/);

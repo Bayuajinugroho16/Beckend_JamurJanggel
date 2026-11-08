@@ -17,7 +17,7 @@ describe('MQTT subscriptions', () => {
 
     expect(client.subscribe).toHaveBeenCalledWith(
       [
-        'jamur/+/soil', 'jamur/+/suhu', 'jamur/+/rh',
+        'jamur/+/soil', 'jamur/+/suhu',
         'jamur/+/battery', 'jamur/+/battery_percent', 'jamur/+/status',
         'jamur/notifikasi', 'jamur/debug/test'
       ],
@@ -42,7 +42,7 @@ describe('MQTT subscriptions', () => {
 
     expect(errorSpy).toHaveBeenCalledWith('MQTT subscription failed', {
       message: 'Subscribe error: Unspecified error',
-      rejectedTopics: [{ topic: 'jamur/+/rh', reasonCode: 0x80 }]
+      rejectedTopics: [{ topic: 'jamur/+/battery', reasonCode: 0x80 }]
     });
     errorSpy.mockRestore();
   });
@@ -74,7 +74,6 @@ describe('MQTT subscriptions', () => {
       mode: 'manual',
       isActive: true,
       targetTemp: 25,
-      targetRh: 0,
       targetSoil: 0
     }]);
     const sensorCreate = jest.spyOn(prisma.sensorData, 'create').mockResolvedValue({});
@@ -85,7 +84,6 @@ describe('MQTT subscriptions', () => {
     for (const [field, value] of [
       ['soil', '9'],
       ['suhu', '25.5'],
-      ['rh', '80'],
       ['battery', '3.87'],
       ['battery_percent', '72']
     ]) {
@@ -93,19 +91,38 @@ describe('MQTT subscriptions', () => {
       await new Promise((resolve) => setImmediate(resolve));
     }
 
-    expect(sensorCreate).toHaveBeenCalledTimes(5);
+    expect(sensorCreate).toHaveBeenCalledTimes(4);
     expect(sensorCreate).toHaveBeenLastCalledWith({
       data: expect.objectContaining({
         nodeId: 1,
         soil_moisture: 9,
         temperature: 25.5,
-        humidity: 80,
         battery_voltage: 3.87,
         battery_percent: 72,
         createdAt: expect.any(Date)
       })
     });
+    expect(sensorCreate.mock.calls.at(-1)[0].data).not.toHaveProperty('humidity');
     sensorCreate.mockRestore();
+    nodeQuery.mockRestore();
+  });
+
+  test('ignores legacy humidity topics from the removed air-humidity sensor', async () => {
+    const { prisma } = require('../src/config/database');
+    const nodeQuery = jest.spyOn(prisma.node, 'findMany').mockResolvedValue([]);
+    const client = new EventEmitter();
+    client.subscribe = jest.fn();
+    mqttService.startMqtt(client, null);
+
+    client.emit('message', 'jamur/node2/rh', Buffer.from('80'));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(nodeQuery).not.toHaveBeenCalled();
+    expect(mqttService.getLatest([2])[0]).toMatchObject({
+      temperature: null,
+      timestamp: null
+    });
+    expect(mqttService.getLatest([2])[0]).not.toHaveProperty('humidity');
     nodeQuery.mockRestore();
   });
 
