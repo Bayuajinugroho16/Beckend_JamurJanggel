@@ -1,13 +1,14 @@
 const { prisma } = require('../config/database');
 const { writeSensor } = require('./influx.service');
 const { notifySensorThreshold } = require('./notification.service');
-const { wateringDuration } = require('./fuzzy.service');
 const logger = require('../utils/logger');
 const { MAX_NODE_ID } = require('../config/nodes');
 
 const latest = new Map();
 const autoWaterCooldown = new Map();
-const AUTO_WATER_COOLDOWN_MS = 5 * 60 * 1000;
+const AUTO_SOIL_THRESHOLD = 60;
+const AUTO_WATER_DURATION_SECONDS = 5;
+const AUTO_WATER_COOLDOWN_MS = 30 * 1000;
 const DEBUG_MESSAGE_LIMIT = 50;
 const subscribedTopics = [
   'jamur/+/soil',
@@ -42,21 +43,43 @@ function publish(topic, payload) {
 }
 
 async function autoWater(node, reading) {
-  if (node.mode !== 'auto') return;
-  const lastWatered = autoWaterCooldown.get(node.id) || 0;
-  if (Date.now() - lastWatered < AUTO_WATER_COOLDOWN_MS) return;
-  const duration = wateringDuration(reading, node.targetSoil);
-  if (!duration) return;
+  if (node.mode === 'manual') {
+    logger.info(`[MANUAL] Node ${node.nodeId} soil ${reading.soilMoisture}%, tidak ada aksi otomatis`);
+    return;
+  }
+  if (node.mode !== 'auto' || reading.soilMoisture >= AUTO_SOIL_THRESHOLD) return;
+
+  const now = Date.now();
+  const lastWatered = autoWaterCooldown.get(node.nodeId) || 0;
+  if (now - lastWatered < AUTO_WATER_COOLDOWN_MS) return;
+  autoWaterCooldown.set(node.nodeId, now);
+
   try {
-    await publish('jamur/pompa/perintah', duration);
-    autoWaterCooldown.set(node.id, Date.now());
-    await prisma.log.create({ data: { nodeId: node.id, action: 'water', duration, source: 'fuzzy' } });
-    if (io) io.to(`node:${node.nodeId}`).emit('relay:status', {
-      nodeId: node.nodeId, isWatering: true, duration
+    await publish('jamur/pompa/perintah', String(AUTO_WATER_DURATION_SECONDS));
+  } catch (error) {
+    if (autoWaterCooldown.get(node.nodeId) === now) autoWaterCooldown.delete(node.nodeId);
+    logger.error('Automatic watering failed', { nodeId: node.nodeId, message: error.message });
+    return;
+  }
+
+  logger.info(`[AUTO] Node ${node.nodeId} soil ${reading.soilMoisture}% < 60%, pompa nyala 5 detik`);
+  try {
+    await prisma.log.create({
+      data: {
+        nodeId: node.id,
+        action: 'water',
+        duration: AUTO_WATER_DURATION_SECONDS,
+        source: 'auto'
+      }
     });
   } catch (error) {
-    logger.error('Automatic watering failed', { nodeId: node.nodeId, message: error.message });
+    logger.error('Could not persist automatic watering log', {
+      nodeId: node.nodeId, message: error.message
+    });
   }
+  if (io) io.to(`node:${node.nodeId}`).emit('relay:status', {
+    nodeId: node.nodeId, isWatering: true, duration: AUTO_WATER_DURATION_SECONDS
+  });
 }
 
 async function processSensor(nodeId, field, value) {
@@ -84,35 +107,39 @@ async function processSensor(nodeId, field, value) {
   reading.timestamp = new Date().toISOString();
   latest.set(key, reading);
 
-  const nodes = await prisma.node.findMany({ where: { nodeId: Number(nodeId), isActive: true } });
-  for (const node of nodes) {
-    if (io) io.to(`node:${node.nodeId}`).emit('sensor:update', reading);
-    try {
-      await prisma.sensorData.create({
-        data: {
-          nodeId: node.nodeId,
-          soil_moisture: reading.soilMoisture,
-          temperature: reading.temperature,
-          battery_voltage: reading.batteryVoltage,
-          battery_percent: reading.batteryPercent,
-          createdAt: new Date(reading.timestamp)
-        }
-      });
-    } catch (error) {
-      logger.error('Could not persist sensor reading to PostgreSQL', {
-        nodeId: node.nodeId, message: error.message
-      });
-    }
-    try {
-      await writeSensor({ ...reading, userId: node.userId });
-    } catch (error) {
-      logger.error('Could not persist sensor reading to InfluxDB', {
-        nodeId: node.nodeId, userId: node.userId, message: error.message
-      });
-    }
-    await notifySensorThreshold(node, reading);
-    if (field === 'soil') await autoWater(node, reading);
+  const node = await prisma.node.findUnique({ where: { nodeId: Number(nodeId) } });
+  if (!node) {
+    logger.warn('Ignoring sensor reading for unknown MQTT node', { nodeId: Number(nodeId) });
+    return;
   }
+  if (!node.isActive) return;
+
+  if (io) io.to(`node:${node.nodeId}`).emit('sensor:update', reading);
+  try {
+    await prisma.sensorData.create({
+      data: {
+        nodeId: node.nodeId,
+        soil_moisture: reading.soilMoisture,
+        temperature: reading.temperature,
+        battery_voltage: reading.batteryVoltage,
+        battery_percent: reading.batteryPercent,
+        createdAt: new Date(reading.timestamp)
+      }
+    });
+  } catch (error) {
+    logger.error('Could not persist sensor reading to PostgreSQL', {
+      nodeId: node.nodeId, message: error.message
+    });
+  }
+  try {
+    await writeSensor({ ...reading, userId: node.userId });
+  } catch (error) {
+    logger.error('Could not persist sensor reading to InfluxDB', {
+      nodeId: node.nodeId, userId: node.userId, message: error.message
+    });
+  }
+  await notifySensorThreshold(node, reading);
+  if (field === 'soil') await autoWater(node, reading);
 }
 
 async function processStatus(nodeId, message) {

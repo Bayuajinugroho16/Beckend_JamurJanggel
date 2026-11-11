@@ -19,6 +19,7 @@ function startScheduleWorker(io) {
         if (
           schedule.days[day] !== '1' ||
           !schedule.node.isActive ||
+          schedule.node.mode !== 'auto' ||
           schedule.node.nodeId > MAX_NODE_ID
         ) continue;
         try {

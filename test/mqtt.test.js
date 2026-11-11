@@ -3,6 +3,12 @@ process.env.JWT_SECRET = 'unit-test-secret-value-at-least-32-characters';
 process.env.NODE_ENV = 'test';
 
 const { EventEmitter } = require('events');
+jest.mock('../src/services/influx.service', () => ({
+  writeSensor: jest.fn().mockResolvedValue()
+}));
+jest.mock('../src/services/notification.service', () => ({
+  notifySensorThreshold: jest.fn().mockResolvedValue()
+}));
 const mqttService = require('../src/services/mqtt.service');
 
 describe('MQTT subscriptions', () => {
@@ -49,7 +55,7 @@ describe('MQTT subscriptions', () => {
 
   test('updates latest battery telemetry from per-node MQTT topics', async () => {
     const { prisma } = require('../src/config/database');
-    const nodeQuery = jest.spyOn(prisma.node, 'findMany').mockResolvedValue([]);
+    const nodeQuery = jest.spyOn(prisma.node, 'findUnique').mockResolvedValue(null);
     const client = new EventEmitter();
     client.subscribe = jest.fn();
     mqttService.startMqtt(client, null);
@@ -67,7 +73,7 @@ describe('MQTT subscriptions', () => {
 
   test('persists each individual sensor topic as the latest known PostgreSQL snapshot', async () => {
     const { prisma } = require('../src/config/database');
-    const nodeQuery = jest.spyOn(prisma.node, 'findMany').mockResolvedValue([{
+    const nodeQuery = jest.spyOn(prisma.node, 'findUnique').mockResolvedValue({
       id: 1,
       nodeId: 1,
       userId: 2,
@@ -75,7 +81,7 @@ describe('MQTT subscriptions', () => {
       isActive: true,
       targetTemp: 25,
       targetSoil: 0
-    }]);
+    });
     const sensorCreate = jest.spyOn(prisma.sensorData, 'create').mockResolvedValue({});
     const client = new EventEmitter();
     client.subscribe = jest.fn();
@@ -109,7 +115,7 @@ describe('MQTT subscriptions', () => {
 
   test('ignores legacy humidity topics from the removed air-humidity sensor', async () => {
     const { prisma } = require('../src/config/database');
-    const nodeQuery = jest.spyOn(prisma.node, 'findMany').mockResolvedValue([]);
+    const nodeQuery = jest.spyOn(prisma.node, 'findUnique').mockResolvedValue(null);
     const client = new EventEmitter();
     client.subscribe = jest.fn();
     mqttService.startMqtt(client, null);
@@ -123,6 +129,100 @@ describe('MQTT subscriptions', () => {
       timestamp: null
     });
     expect(mqttService.getLatest([2])[0]).not.toHaveProperty('humidity');
+    nodeQuery.mockRestore();
+  });
+
+  test('automatically waters an auto-mode node below 60% and applies a 30-second cooldown', async () => {
+    const { prisma } = require('../src/config/database');
+    const nodeQuery = jest.spyOn(prisma.node, 'findUnique').mockResolvedValue({
+      id: 2,
+      nodeId: 2,
+      userId: 1,
+      mode: 'auto',
+      isActive: true,
+      targetTemp: 25,
+      targetSoil: 70
+    });
+    const sensorCreate = jest.spyOn(prisma.sensorData, 'create').mockResolvedValue({});
+    const logCreate = jest.spyOn(prisma.log, 'create').mockResolvedValue({});
+    const client = new EventEmitter();
+    client.connected = true;
+    client.subscribe = jest.fn();
+    client.publish = jest.fn((topic, payload, options, callback) => callback(null));
+    mqttService.startMqtt(client, null);
+
+    client.emit('message', 'jamur/node2/soil', Buffer.from('60'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(client.publish).not.toHaveBeenCalled();
+
+    client.emit('message', 'jamur/node2/soil', Buffer.from('55'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    client.emit('message', 'jamur/node2/soil', Buffer.from('54'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(client.publish).toHaveBeenCalledTimes(1);
+    expect(client.publish).toHaveBeenCalledWith(
+      'jamur/pompa/perintah',
+      '5',
+      { qos: 1 },
+      expect.any(Function)
+    );
+    expect(logCreate).toHaveBeenCalledWith({
+      data: { nodeId: 2, action: 'water', duration: 5, source: 'auto' }
+    });
+    sensorCreate.mockRestore();
+    logCreate.mockRestore();
+    nodeQuery.mockRestore();
+  });
+
+  test('does not automatically water a manual-mode node even below 60%', async () => {
+    const { prisma } = require('../src/config/database');
+    const nodeQuery = jest.spyOn(prisma.node, 'findUnique').mockResolvedValue({
+      id: 1,
+      nodeId: 1,
+      userId: 1,
+      mode: 'manual',
+      isActive: true,
+      targetTemp: 25,
+      targetSoil: 70
+    });
+    const sensorCreate = jest.spyOn(prisma.sensorData, 'create').mockResolvedValue({});
+    const logger = require('../src/utils/logger');
+    const infoSpy = jest.spyOn(logger, 'info').mockImplementation(() => {});
+    const client = new EventEmitter();
+    client.connected = true;
+    client.subscribe = jest.fn();
+    client.publish = jest.fn();
+    mqttService.startMqtt(client, null);
+
+    client.emit('message', 'jamur/node1/soil', Buffer.from('40'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(client.publish).not.toHaveBeenCalled();
+    expect(infoSpy).toHaveBeenCalledWith(
+      '[MANUAL] Node 1 soil 40%, tidak ada aksi otomatis'
+    );
+    infoSpy.mockRestore();
+    sensorCreate.mockRestore();
+    nodeQuery.mockRestore();
+  });
+
+  test('handles soil messages for nodes missing from the database without publishing', async () => {
+    const { prisma } = require('../src/config/database');
+    const nodeQuery = jest.spyOn(prisma.node, 'findUnique').mockResolvedValue(null);
+    const logger = require('../src/utils/logger');
+    const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    const client = new EventEmitter();
+    client.subscribe = jest.fn();
+    client.publish = jest.fn();
+    mqttService.startMqtt(client, null);
+
+    client.emit('message', 'jamur/node2/soil', Buffer.from('30'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(client.publish).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith('Ignoring sensor reading for unknown MQTT node', { nodeId: 2 });
+    warnSpy.mockRestore();
     nodeQuery.mockRestore();
   });
 
