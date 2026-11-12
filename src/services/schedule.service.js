@@ -8,8 +8,10 @@ function startScheduleWorker(io) {
   return cron.schedule('* * * * *', async () => {
     try {
       const now = new Date();
-      const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      const day = now.getDay();
+      const wibOffset = 7 * 60 * 60 * 1000;
+const wibTime = new Date(Date.now() + wibOffset);
+const time = `${String(wibTime.getHours()).padStart(2, '0')}:${String(wibTime.getMinutes()).padStart(2, '0')}`;
+const day = wibTime.getDay();
       const schedules = await prisma.schedule.findMany({
         where: { isActive: true, time },
         include: { node: true }

@@ -298,13 +298,22 @@ const controller = {
   },
 
   async createSchedule(req, res) {
-    const node = await sharedNode(req.body.nodeId);
-    const schedule = await prisma.schedule.create({
-      data: { ...req.body, userId: req.user.id, nodeId: node.id },
-      include: { node: true }
-    });
-    return apiResponse(res, scheduleView(schedule), 'Schedule created', 201);
-  },
+  const node = await sharedNode(req.body.nodeId);
+
+  // ===== VALIDASI: Hanya bisa buat jadwal jika node mode = auto =====
+  if (node.mode !== 'auto') {
+    throw Object.assign(
+      new Error('Jadwal hanya bisa dibuat jika Node dalam mode Auto. Ubah mode ke Auto terlebih dahulu.'),
+      { status: 400 }
+    );
+  }
+
+  const schedule = await prisma.schedule.create({
+    data: { ...req.body, userId: req.user.id, nodeId: node.id },
+    include: { node: true }
+  });
+  return apiResponse(res, scheduleView(schedule), 'Schedule created', 201);
+},
 
   async updateSchedule(req, res) {
     const schedule = await ownedSchedule(req.user.id, req.params.id);

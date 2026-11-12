@@ -6,6 +6,13 @@ const { MAX_NODE_ID } = require('../config/nodes');
 
 const latest = new Map();
 const autoWaterCooldown = new Map();
+
+// ===== UNTUK SKIP SIMPAN =====
+const lastSoilValue = new Map();  // Nilai soil terakhir yang disimpan
+const lastSaveTime = new Map();   // Waktu terakhir simpan
+const SOIL_CHANGE_THRESHOLD = 5;  // Perubahan > 2% dianggap "berubah"
+const MAX_SAVE_INTERVAL_MS = 3600000; // 1 jam
+
 const AUTO_SOIL_THRESHOLD = 60;
 const AUTO_WATER_DURATION_SECONDS = 5;
 const AUTO_WATER_COOLDOWN_MS = 30 * 1000;
@@ -114,30 +121,58 @@ async function processSensor(nodeId, field, value) {
   }
   if (!node.isActive) return;
 
+  // ===== SELALU KIRIM KE WEBSOCKET (REAL-TIME) =====
   if (io) io.to(`node:${node.nodeId}`).emit('sensor:update', reading);
-  try {
-    await prisma.sensorData.create({
-      data: {
-        nodeId: node.nodeId,
-        soil_moisture: reading.soilMoisture,
-        temperature: reading.temperature,
-        battery_voltage: reading.batteryVoltage,
-        battery_percent: reading.batteryPercent,
-        createdAt: new Date(reading.timestamp)
-      }
-    });
-  } catch (error) {
-    logger.error('Could not persist sensor reading to PostgreSQL', {
-      nodeId: node.nodeId, message: error.message
-    });
+
+  // ===== CEK APAKAH PERLU SIMPAN =====
+  let shouldSave = true;
+  if (field === 'soil') {
+    const prevValue = lastSoilValue.get(nodeId);
+    const now = Date.now();
+    const lastTime = lastSaveTime.get(nodeId) || 0;
+    
+    const hasChanged = prevValue === undefined || Math.abs(value - prevValue) > SOIL_CHANGE_THRESHOLD;
+    const oneHourPassed = (now - lastTime) > MAX_SAVE_INTERVAL_MS;
+    
+    shouldSave = hasChanged || oneHourPassed;
+    
+    if (shouldSave) {
+      lastSoilValue.set(nodeId, value);
+      lastSaveTime.set(nodeId, now);
+      logger.info(`[SAVE] Node ${nodeId} soil ${value}% (changed/1h)`);
+    } else {
+      logger.debug(`[SKIP] Node ${nodeId} soil ${value}% (tidak berubah)`);
+    }
   }
-  try {
-    await writeSensor({ ...reading, userId: node.userId });
-  } catch (error) {
-    logger.error('Could not persist sensor reading to InfluxDB', {
-      nodeId: node.nodeId, userId: node.userId, message: error.message
-    });
+
+  // ===== SIMPAN KE DATABASE (JIKA PERLU) =====
+  if (shouldSave) {
+    try {
+      await prisma.sensorData.create({
+        data: {
+          nodeId: node.nodeId,
+          soil_moisture: reading.soilMoisture,
+          temperature: reading.temperature,
+          battery_voltage: reading.batteryVoltage,
+          battery_percent: reading.batteryPercent,
+          createdAt: new Date(reading.timestamp)
+        }
+      });
+    } catch (error) {
+      logger.error('Could not persist sensor reading to PostgreSQL', {
+        nodeId: node.nodeId, message: error.message
+      });
+    }
+    try {
+      await writeSensor({ ...reading, userId: node.userId });
+    } catch (error) {
+      logger.error('Could not persist sensor reading to InfluxDB', {
+        nodeId: node.nodeId, userId: node.userId, message: error.message
+      });
+    }
   }
+
+  // ===== SELALU PROSES KONTROL OTOMATIS =====
   await notifySensorThreshold(node, reading);
   if (field === 'soil') await autoWater(node, reading);
 }
